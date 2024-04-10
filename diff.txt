@@ -50,3 +50,4 @@
 >     logger.info(f"Weighted PCK0.01: {np.average(pcks_01, weights=weights) * 100:.2f}") 
 571d559
 <     parser.add_argument('--PASCAL', action='store_true', default=False)             # set true to test on pfpascal dataset
+
