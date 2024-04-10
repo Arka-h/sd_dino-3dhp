@@ -1,0 +1,69 @@
+{
+    "pair_id": 1,
+    "filename": "000001-2008_002719-2008_004100:aeroplane",
+    "src_imname": "2008_002719.jpg",
+    "trg_imname": "2008_004100.jpg",
+    "src_imsize": [
+        500,
+        333,
+        3
+    ],
+    "trg_imsize": [
+        500,
+        332,
+        3
+    ],
+    "src_bndbox": [
+        210,
+        34,
+        475,
+        250
+    ],
+    "trg_bndbox": [
+        36,
+        92,
+        500,
+        200
+    ],
+    "category": "aeroplane",
+    "src_pose": "Left",
+    "trg_pose": "Left",
+    "src_kps": [
+        [
+            212,
+            153
+        ],
+        [
+            300,
+            130
+        ],
+        [
+            330,
+            127
+        ]
+    ],
+    "trg_kps": [
+        [
+            39,
+            145
+        ],
+        [
+            364,
+            171
+        ],
+        [
+            416,
+            173
+        ]
+    ],
+    "kps_ids": [
+        "0",
+        "7",
+        "11"
+    ],
+    "mirror": 0,
+    "viewpoint_variation": 0,
+    "scale_variation": 0,
+    "truncation": 2,
+    "occlusion": 2
+}

@@ -1,0 +1,52 @@
+417c417
+<     alpha = torch.tensor([0.1, 0.05, 0.01]) if not PASCAL else torch.tensor([0.1, 0.05, 0.15])
+---
+>     alpha = torch.tensor([0.1, 0.05, 0.01])
+439c439
+<     global MASK, SAMPLE, DIST, COUNT_INVIS, TOTAL_SAVE_RESULT, BBOX_THRE, VER, CO_PCA, PCA_DIMS, SIZE, FUSE_DINO, DINOV2, MODEL_SIZE, DRAW_DENSE, TEXT_INPUT, DRAW_SWAP, ONLY_DINO, SEED, EDGE_PAD, WEIGHT, CO_PCA_DINO, PASCAL, DRAW_GIF, RAW
+---
+>     global MASK, SAMPLE, DIST, COUNT_INVIS, TOTAL_SAVE_RESULT, BBOX_THRE, VER, CO_PCA, PCA_DIMS, SIZE, FUSE_DINO, DINOV2, MODEL_SIZE, DRAW_DENSE, TEXT_INPUT, DRAW_SWAP, ONLY_DINO, SEED, EDGE_PAD, WEIGHT, CO_PCA_DINO, DRAW_GIF, RAW
+466d465
+<     PASCAL = args.PASCAL
+482,483d480
+<     if PASCAL:
+<         SAMPLE = 0
+491,492c488
+<     if PASCAL:
+<         save_path=f'./results_pascal/pck_fuse_{args.NOTE}mask_{MASK}_sample_{SAMPLE}_BBOX_{BBOX_THRE}_dist_{DIST}_Invis_{COUNT_INVIS}_{args.TIMESTEP}{VER}_{MODEL_SIZE}_{SIZE}_copca_{CO_PCA}_{INDICES[0]}_{PCA_DIMS[0]}_{INDICES[1]}_{PCA_DIMS[1]}_{INDICES[2]}_{PCA_DIMS[2]}_text_{TEXT_INPUT}_sd_{WEIGHT[3]}{not ONLY_DINO}_dino_{WEIGHT[4]}{FUSE_DINO}'
+---
+>     
+501,509c497,499
+<     data_dir = 'data/SPair-71k' if not PASCAL else 'data/PF-dataset-PASCAL'
+<     if not PASCAL:
+<         categories = os.listdir(os.path.join(data_dir, 'ImageAnnotation'))
+<         categories = sorted(categories)
+<     else:
+<         categories = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+<                     'bus', 'car', 'cat', 'chair', 'cow',
+<                     'diningtable', 'dog', 'horse', 'motorbike', 'person',
+<                     'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor'] # for pascal
+---
+>     data_dir = 'data/SPair-71k'
+>     categories = os.listdir(os.path.join(data_dir, 'ImageAnnotation'))
+>     categories = sorted(categories)
+517c507
+<         files, kps, thresholds = load_spair_data(data_dir, size=img_size, category=cat, subsample=SAMPLE) if not PASCAL else load_pascal_data(data_dir, size=img_size, category=cat, subsample=SAMPLE)
+---
+>         files, kps, thresholds = load_spair_data(data_dir, size=img_size, category=cat, subsample=SAMPLE)
+530c520
+<     logger.info(f"Average PCK0.01: {np.average(pcks_01) * 100:.2f}") if not PASCAL else logger.info(f"Average PCK0.15: {np.average(pcks_01) * 100:.2f}")
+---
+>     logger.info(f"Average PCK0.01: {np.average(pcks_01) * 100:.2f}") 
+532d521
+<         weights_pascal=[15,30,10,6,8,32,19,27,13,3,8,24,9,27,12,7,1,13,20,15]
+534c523
+<         weights = weights_pascal if PASCAL else weights_spair
+---
+>         weights = weights_spair
+539c528
+<     logger.info(f"Weighted PCK0.01: {np.average(pcks_01, weights=weights) * 100:.2f}") if not PASCAL else logger.info(f"Weighted PCK0.15: {np.average(pcks_01, weights=weights) * 100:.2f}")
+---
+>     logger.info(f"Weighted PCK0.01: {np.average(pcks_01, weights=weights) * 100:.2f}") 
+571d559
+<     parser.add_argument('--PASCAL', action='store_true', default=False)             # set true to test on pfpascal dataset
