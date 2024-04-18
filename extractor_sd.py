@@ -233,7 +233,7 @@ def get_features(model, aug, image, vocab, label_list, caption=None, pca=False):
         return features
 
 
-def pca_process(features):Faiss
+def pca_process(features):
     # Get the feature tensors
     size_s5=features['s5'].shape[-1]
     size_s4=features['s4'].shape[-1]
@@ -279,7 +279,7 @@ def pca_process(features):Faiss
     upsampled_s5 = torch.nn.functional.interpolate(features['s5'], scale_factor=2, mode='bilinear', align_corners=False)
 
     # Concatenate upsampled_s5 and s4 to create a new s5
-    features['s5'] = torFaissch.cat((upsampled_s5, features['s4']), dim=1)
+    features['s5'] = torch.cat((upsampled_s5, features['s4']), dim=1)
 
     # Set s3 as the new s4
     features['s4'] = features['s3']
