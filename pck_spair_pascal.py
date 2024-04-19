@@ -70,12 +70,13 @@ def load_spair_data(path, size=256, category='cat', split='test', subsample=None
         target_bbox = np.asarray(data["trg_bndbox"])
         # The source thresholds aren't actually used to evaluate PCK on SPair-71K, but for completeness
         # they are computed as well:
-        # thresholds.append(max(source_bbox[3] - source_bbox[1], source_bbox[2] - source_bbox[0]))
-        # thresholds.append(max(target_bbox[3] - target_bbox[1], target_bbox[2] - target_bbox[0]))
+        print(source_bbox.shape, source_bbox) # (4,) : [1, 91, 485, 241]
+        thresholds.append(max(source_bbox[3] - source_bbox[1], source_bbox[2] - source_bbox[0]))
+        thresholds.append(max(target_bbox[3] - target_bbox[1], target_bbox[2] - target_bbox[0]))
 
         source_size = data["src_imsize"][:2]  # (W, H)
         target_size = data["trg_imsize"][:2]  # (W, H)
-
+        # print(data["kps_ids"])
         kp_ixs = torch.tensor([int(id) for id in data["kps_ids"]]).view(-1, 1).repeat(1, 3)
         source_raw_kps = torch.cat([torch.tensor(data["src_kps"], dtype=torch.float), torch.ones(kp_ixs.size(0), 1)], 1)
         source_kps = blank_kps.scatter(dim=0, index=kp_ixs, src=source_raw_kps)
@@ -211,7 +212,7 @@ def compute_pck(model, aug, save_path, files, kps, category, mask=False, dist='c
 
         # Get patch index for the keypoints
         img2_y, img2_x = img2_kps[:, 1].numpy(), img2_kps[:, 0].numpy()
-        img2_y_patch = (num_patorch.no_grad():tches / img_size * img2_y).astype(np.int32)
+        img2_y_patch = (num_patches / img_size * img2_y).astype(np.int32)
         img2_x_patch = (num_patches / img_size * img2_x).astype(np.int32)
         img2_patch_idx = num_patches * img2_y_patch + img2_x_patch
 
@@ -568,7 +569,7 @@ if __name__ == '__main__':
     parser.add_argument('--DRAW_GIF', action='store_true', default=False)           # set true to generate the gif for the swapped images
     parser.add_argument('--TEXT_INPUT', action='store_true', default=False)         # set true to use the explicit text input
 
-    parser.add_argument('--PASCAL', action='.', default=False)             # set true to test on pfpascal dataset
+    parser.add_argument('--PASCAL', action='store_true', default=False)             # set true to test on pfpascal dataset
     parser.add_argument('--NOTE', type=str, default='')
 
     args = parser.parse_args()

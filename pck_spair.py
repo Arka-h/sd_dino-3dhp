@@ -9,6 +9,7 @@ from PIL import Image
 from tqdm import tqdm
 import torch.nn.functional as F
 import json
+import re
 from glob import glob
 from utils.utils_correspondence import pairwise_sim, draw_correspondences_gathered, chunk_cosine_sim, co_pca, resize, find_nearest_patchs, find_nearest_patchs_replace, draw_correspondences_lines
 import matplotlib.pyplot as plt
@@ -19,6 +20,7 @@ from loguru import logger
 import argparse
 from extractor_dino import ViTExtractor
 from extractor_sd import load_model, process_features_and_mask, get_mask
+from data.mpi_inf_3dhp.util.mpii_get_joint_set import mpii_get_joint_set
 
 def preprocess_kps_pad(kps, img_width, img_height, size):
     # Once an image has been pre-processed via border (or zero) padding,
@@ -45,7 +47,7 @@ def preprocess_kps_pad(kps, img_width, img_height, size):
         kps *= kps[:, 2:3].clone()  # zero-out any non-visible key points
     return kps, offset_x, offset_y, scale
 
-def load_spair_data(path, size=256, category='cat', split='test', subsample=None):
+def load_spair_data(path, size=256):
     np.random.seed(SEED)
     pairs = sorted(glob(f'{path}/PairAnnotation/{split}/*:{category}.json'))
     if subsample is not None and subsample > 0:
@@ -98,43 +100,82 @@ def load_spair_data(path, size=256, category='cat', split='test', subsample=None
     logger.info(f'Final number of used key points: {kps.size(1)}')
     return files, kps, thresholds
 
-def load_3dhp_data(path, size=2048, split='subset'): # subsample=None
+def get_bbox(x): # :(N,2)
+    min_x = np.min(x[:, 0])
+    max_x = np.max(x[:, 0])
+    min_y = np.min(x[:, 1])
+    max_y = np.max(x[:, 1])
+    bbox = np.array([min_x, min_y, max_x, max_y]) # :(4,) Actual bbox will be -> [[min_x, min_y], [max_x, min_y], [max_x, max_y], [min_x, max_y]]
+    return bbox # :(4,2)
+
+def load_3dhp_data(path, size=2048):
+    #  Specific to subset: S1, S2, Seq1, Seq2
+    S = [i for i in range(1,3)]
+    Seq = [i for i in range(1,3)]
+    # Init SEED
     np.random.seed(SEED)
-    pairs = sorted(glob(f'{path}/PairAnnotation/{split}/*:{category}.json')) # TODO: change to 3dhp data, + get pairs
+    # Get all img indices
+    idx =[]
+    for s in S:
+        for seq in Seq:
+            
+            for f in os.listdir(f'{path}/S{s}/Seq{seq}/imageSequence/frames_0/'):
+                match = re.search('img_0_([0-9]+).jpg', f)
+                if match:
+                    idx.append([s,seq,int(match.group(1))])
+        
+    idx = np.array(idx) - np.array([0,0,1]) # [(S, Seq, frame no.), ...] : (N,3)
+    idx_pairs_id = np.random.choice(np.arange(idx.shape[0]), size= 12234 * 2, replace=False) # choose the same number of pairs as in the original paper
+    idx_pairs = idx[idx_pairs_id].reshape(-1, 2, 3) # :(T, 2, 3)
+    T=idx_pairs.shape[0] # T: Number of test pairs
+    annot=np.array([[ torch.load(f'{path}/S{s}/Seq{seq}/annot.pt') for seq in Seq] for s in S]) # Get all the annotations
+    
+    # pairs = sorted(glob(f'{path}/PairAnnotation/{split}/*:{category}.json')) # TODO: change to 3dhp data, + get pairs
     # if subsample is not None and subsample > 0:
     #     pairs = [pairs[ix] for ix in np.random.choice(len(pairs), subsample)]
-    logger.info(f'Number of SPairs for {category} = {len(pairs)}') # Category will probably not be used
+    # logger.info(f'Number of SPairs for {category} = {len(pairs)}') # Category will probably not be used
     files = []
     thresholds = []
-    category_anno = list(glob(f'{path}/ImageAnnotation/{category}/*.json'))[0] # This is extracted from the annot[''] dict
-    with open(category_anno) as f:
-        num_kps = len(json.load(f)['kps'])
-    logger.info(f'Number of SPair key points for {category} <= {num_kps}')
+    # category_anno = list(glob(f'{path}/ImageAnnotation/{category}/*.json'))[0] # This is extracted from the annot[''] dict
+    # with open(category_anno) as f:
+    #     num_kps = len(json.load(f)['kps'])
+    jnt = mpii_get_joint_set('all') # Get joint info, for all 28 points
+    num_kps = len(jnt['joint_idx']) # Get number of key points
+    logger.info(f'Number of 3DHP joints/key points <= {num_kps}')
     kps = []
     blank_kps = torch.zeros(num_kps, 3)
-    for pair in pairs:
-        with open(pair) as f:
-            data = json.load(f)
-        assert category == data["category"]
-        assert data["mirror"] == 0
-        source_fn = f'{path}/JPEGImages/{category}/{data["src_imname"]}'
-        target_fn = f'{path}/JPEGImages/{category}/{data["trg_imname"]}'
-        source_bbox = np.asarray(data["src_bndbox"]) #? Why bbox?
-        target_bbox = np.asarray(data["trg_bndbox"])
+    cam=0
+    for t in range(T):
+        src_s, src_seq = idx_pairs[t, 0, :2]
+        tgt_s, tgt_seq = idx_pairs[t, 1, :2]
+        src_frame = idx_pairs[t, 0, -1]
+        tgt_frame = idx_pairs[t, 1, -1]
+        
+        src_annot = annot[src_s-1, src_seq-1]
+        tgt_annot = annot[tgt_s-1, tgt_seq-1]
+        src_kps = src_annot['annot2'][cam, src_frame] # (28,2)
+        tgt_kps = tgt_annot['annot2'][cam, tgt_frame] # (28,2)
+        
+        source_fn = f'{path}/S{src_s}/Seq{src_seq}/imageSequence/frames_{cam}/img_{cam}_{src_frame:06d}.jpg'
+        target_fn = f'{path}/S{tgt_s}/Seq{tgt_seq}/imageSequence/frames_{cam}/img_{cam}_{tgt_frame:06d}.jpg'
+        
+        source_bbox = get_bbox(src_kps) #? Why bbox?
+        target_bbox = get_bbox(tgt_kps)
         # The source thresholds aren't actually used to evaluate PCK on SPair-71K, but for completeness
         # they are computed as well:
         thresholds.append(max(source_bbox[3] - source_bbox[1], source_bbox[2] - source_bbox[0]))
         thresholds.append(max(target_bbox[3] - target_bbox[1], target_bbox[2] - target_bbox[0]))
 
-        source_size = data["src_imsize"][:2]  # Extract (W, H)
-        target_size = data["trg_imsize"][:2]  # Extract (W, H)
-
-        kp_ixs = torch.tensor([int(id) for id in data["kps_ids"]]).view(-1, 1).repeat(1, 3)
-        source_raw_kps = torch.cat([torch.tensor(data["src_kps"], dtype=torch.float), torch.ones(kp_ixs.size(0), 1)], 1)
+        source_size = np.array(2048, 2048)  # In camera.callibration file: (W, H)
+        target_size = np.array(2048, 2048)  # In camera.callibration file: (W, H)
+    
+        # Understand and translate this part
+        kp_ixs = torch.tensor(jnt['joint_idx']).view(-1, 1).repeat(1, 3)
+        source_raw_kps = torch.cat([torch.tensor(src_kps, dtype=torch.float), torch.ones(kp_ixs.size(0), 1)], 1)
         source_kps = blank_kps.scatter(dim=0, index=kp_ixs, src=source_raw_kps)
         source_kps, src_x, src_y, src_scale = preprocess_kps_pad(source_kps, source_size[0], source_size[1], size)
         
-        target_raw_kps = torch.cat([torch.tensor(data["trg_kps"], dtype=torch.float), torch.ones(kp_ixs.size(0), 1)], 1)
+        target_raw_kps = torch.cat([torch.tensor(tgt_kps, dtype=torch.float), torch.ones(kp_ixs.size(0), 1)], 1)
         target_kps = blank_kps.scatter(dim=0, index=kp_ixs, src=target_raw_kps)
         target_kps, trg_x, trg_y, trg_scale = preprocess_kps_pad(target_kps, target_size[0], target_size[1], size)
         
@@ -479,7 +520,7 @@ def main(args):
     torch.cuda.manual_seed(args.SEED)
     torch.backends.cudnn.benchmark = True
     model, aug = load_model(diffusion_ver=VER, image_size=SIZE, num_timesteps=args.TIMESTEP, block_indices=tuple(INDICES))
-    save_path=f'./results_spair/pck_fuse_{args.NOTE}mask_{MASK}_sample_{SAMPLE}_BBOX_{BBOX_THRE}_dist_{DIST}_Invis_{COUNT_INVIS}_{args.TIMESTEP}{VER}_{MODEL_SIZE}_{SIZE}_copca_{CO_PCA}_{INDICES[0]}_{PCA_DIMS[0]}_{INDICES[1]}_{PCA_DIMS[1]}_{INDICES[2]}_{PCA_DIMS[2]}_text_{TEXT_INPUT}_sd_{WEIGHT[3]}{not ONLY_DINO}_dino_{WEIGHT[4]}{FUSE_DINO}'
+    save_path=f'./results_3dhp/pck_fuse_{args.NOTE}mask_{MASK}_sample_{SAMPLE}_BBOX_{BBOX_THRE}_dist_{DIST}_Invis_{COUNT_INVIS}_{args.TIMESTEP}{VER}_{MODEL_SIZE}_{SIZE}_copca_{CO_PCA}_{INDICES[0]}_{PCA_DIMS[0]}_{INDICES[1]}_{PCA_DIMS[1]}_{INDICES[2]}_{PCA_DIMS[2]}_text_{TEXT_INPUT}_sd_{WEIGHT[3]}{not ONLY_DINO}_dino_{WEIGHT[4]}{FUSE_DINO}'
     
     if EDGE_PAD:
         save_path += '_edge_pad'
@@ -489,24 +530,22 @@ def main(args):
     logger = get_logger(save_path+'/result.log')
 
     logger.info(args)
-    data_dir = 'data/SPair-71k'
-    categories = os.listdir(os.path.join(data_dir, 'ImageAnnotation'))
-    categories = sorted(categories)
-    img_size = 840 if DINOV2 else 224 if ONLY_DINO else 480
-
+    split = 'subset'
+    data_dir = f'data/mpi_inf_3dhp/{split}'
+    img_size = 840 if DINOV2 else 224 if ONLY_DINO else 480 # TODO: Should I resize?
     pcks = []
     pcks_05 = []
     pcks_01 = []
     start_time=time.time()
-    for cat in categories:
-        files, kps, thresholds = load_spair_data(data_dir, size=img_size, category=cat, subsample=SAMPLE)
-        if BBOX_THRE:
-            pck = compute_pck(model, aug, save_path, files, kps, cat, mask=MASK, dist=DIST, thresholds=thresholds, real_size=SIZE)
-        else:
-            pck = compute_pck(model, aug, save_path, files, kps, cat, mask=MASK, dist=DIST, real_size=SIZE)
-        pcks.append(pck[0])
-        pcks_05.append(pck[1])
-        pcks_01.append(pck[2])
+    # for cat in categories:
+    files, kps, thresholds = load_3dhp_data(data_dir, size=img_size)
+    if BBOX_THRE:
+        pck = compute_pck(model, aug, save_path, files, kps, cat, mask=MASK, dist=DIST, thresholds=thresholds, real_size=SIZE)
+    else:
+        pck = compute_pck(model, aug, save_path, files, kps, cat, mask=MASK, dist=DIST, real_size=SIZE)
+    pcks.append(pck[0])
+    pcks_05.append(pck[1])
+    pcks_01.append(pck[2])
     end_time=time.time()
     minutes, seconds = divmod(end_time-start_time, 60)
     logger.info(f"Time: {minutes:.0f}m {seconds:.0f}s")
